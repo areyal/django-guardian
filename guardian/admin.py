@@ -353,20 +353,20 @@ class GuardedModelAdminMixin:
 class RestrictedGuardedModelAdminMixin(GuardedModelAdminMixin):
     """
     Provides reinforced security to the functionality of GuardedModelAdminMixin.
-	Explicitly provided permissions guardian.change_userobjectpermission 
-	or guardian.change_groupobjectpermission will be required for object 
-	permissions management, global object permission (app.change_object...)
-	will no be enough.
-	This way unadvertised permission escalation is prevented.
-	
-	For viewing object permissions, guardian.view_userobjectpermission
-	or view_groupobjectpermission will be required.
-	
-	It overrides:
-	``obj_perms_manage_view`` so it checks for any of guardian.view_userobjectpermission
-	or guardian.view_groupobjectpermission permissions.
-	``obj_perms_manage_user_view`` so it checks for guardian.change_userobjectpermission.
-	``obj_perms_manage_group_view`` so it checks for guardian.change_groupobjectpermission.
+    Explicitly provided permissions guardian.change_userobjectpermission 
+    or guardian.change_groupobjectpermission will be required for object 
+    permissions management, global object permission (app.change_object...)
+    will no be enough.
+    This way unadvertised permission escalation is prevented.
+    
+    For viewing object permissions, guardian.view_userobjectpermission
+    or view_groupobjectpermission will be required.
+    
+    It overrides:
+    ``obj_perms_manage_view`` so it checks for any of guardian.view_userobjectpermission
+    or guardian.view_groupobjectpermission permissions.
+    ``obj_perms_manage_user_view`` so it checks for guardian.change_userobjectpermission.
+    ``obj_perms_manage_group_view`` so it checks for guardian.change_groupobjectpermission.
     """
 
     def obj_perms_manage_view(self, request, object_pk):
@@ -377,154 +377,31 @@ class RestrictedGuardedModelAdminMixin(GuardedModelAdminMixin):
         shown. In order to add or manage user or group one should use links or
         forms presented within the page.
         """
-        if ( 
-            not self.has_change_permission(request, None)
-            or (not request.user.has_perm('guardian.view_userobjectpermission') and not request.user.has_perm('guardian.view_groupobjectpermission'))
-        ):
+        if not request.user.has_perm('guardian.view_userobjectpermission') and not request.user.has_perm('guardian.view_groupobjectpermission'):
             post_url = reverse('admin:index', current_app=self.admin_site.name)
             return redirect(post_url)
 
-        from django.contrib.admin.utils import unquote
-        obj = get_object_or_404(self.get_queryset(
-            request), pk=unquote(object_pk))
-        users_perms = OrderedDict(
-            sorted(
-                get_users_with_perms(obj, attach_perms=True,
-                                     with_group_users=False).items(),
-                key=lambda user: getattr(
-                    user[0], get_user_model().USERNAME_FIELD)
-            )
-        )
-
-        groups_perms = OrderedDict(
-            sorted(
-                get_groups_with_perms(obj, attach_perms=True).items(),
-                key=lambda group: group[0].name
-            )
-        )
-
-        if request.method == 'POST' and 'submit_manage_user' in request.POST:
-            user_form = self.get_obj_perms_user_select_form(
-                request)(request.POST)
-            group_form = self.get_obj_perms_group_select_form(
-                request)(request.POST)
-            info = (
-                self.admin_site.name,
-                self.model._meta.app_label,
-                self.model._meta.model_name,
-            )
-            if user_form.is_valid():
-                user_id = user_form.cleaned_data['user'].pk
-                url = reverse(
-                    '%s:%s_%s_permissions_manage_user' % info,
-                    args=[obj.pk, user_id]
-                )
-                return redirect(url)
-        elif request.method == 'POST' and 'submit_manage_group' in request.POST:
-            user_form = self.get_obj_perms_user_select_form(
-                request)(request.POST)
-            group_form = self.get_obj_perms_group_select_form(
-                request)(request.POST)
-            info = (
-                self.admin_site.name,
-                self.model._meta.app_label,
-                self.model._meta.model_name,
-            )
-            if group_form.is_valid():
-                group_id = group_form.cleaned_data['group'].id
-                url = reverse(
-                    '%s:%s_%s_permissions_manage_group' % info,
-                    args=[obj.pk, group_id]
-                )
-                return redirect(url)
-        else:
-            user_form = self.get_obj_perms_user_select_form(request)()
-            group_form = self.get_obj_perms_group_select_form(request)()
-
-        context = self.get_obj_perms_base_context(request, obj)
-        context['users_perms'] = users_perms
-        context['groups_perms'] = groups_perms
-        context['user_form'] = user_form
-        context['group_form'] = group_form
-
-        # https://github.com/django/django/commit/cf1f36bb6eb34fafe6c224003ad585a647f6117b
-        request.current_app = self.admin_site.name
-
-        return render(request, self.get_obj_perms_manage_template(), context)
+        return super(RestrictedGuardedModelAdminMixin,self).obj_perms_manage_view(request, object_pk)
 
     def obj_perms_manage_user_view(self, request, object_pk, user_id):
         """
         Manages selected users' permissions for current object.
         """
-        if not self.has_change_permission(request, None) or not request.user.has_perm('guardian.change_userobjectpermission'):
+        if not request.user.has_perm('guardian.change_userobjectpermission'):
             post_url = reverse('admin:index', current_app=self.admin_site.name)
             return redirect(post_url)
 
-        user = get_object_or_404(get_user_model(), pk=user_id)
-        obj = get_object_or_404(self.get_queryset(request), pk=object_pk)
-        form_class = self.get_obj_perms_manage_user_form(request)
-        form = form_class(user, obj, request.POST or None)
-
-        if request.method == 'POST' and form.is_valid():
-            form.save_obj_perms()
-            msg = gettext("Permissions saved.")
-            messages.success(request, msg)
-            info = (
-                self.admin_site.name,
-                self.model._meta.app_label,
-                self.model._meta.model_name,
-            )
-            url = reverse(
-                '%s:%s_%s_permissions_manage_user' % info,
-                args=[obj.pk, user.pk]
-            )
-            return redirect(url)
-
-        context = self.get_obj_perms_base_context(request, obj)
-        context['user_obj'] = user
-        context['user_perms'] = get_user_perms(user, obj)
-        context['form'] = form
-
-        request.current_app = self.admin_site.name
-
-        return render(request, self.get_obj_perms_manage_user_template(), context)
+        return super(RestrictedGuardedModelAdminMixin,self).obj_perms_manage_user_view(request, object_pk, user_id)
 
     def obj_perms_manage_group_view(self, request, object_pk, group_id):
         """
         Manages selected groups' permissions for current object.
         """
-        if not self.has_change_permission(request, None) or not request.user.has_perm('guardian.change_groupobjectpermission'):
+        if not request.user.has_perm('guardian.change_groupobjectpermission'):
             post_url = reverse('admin:index', current_app=self.admin_site.name)
             return redirect(post_url)
 
-        group = get_object_or_404(Group, id=group_id)
-        obj = get_object_or_404(self.get_queryset(request), pk=object_pk)
-        form_class = self.get_obj_perms_manage_group_form(request)
-        form = form_class(group, obj, request.POST or None)
-
-        if request.method == 'POST' and form.is_valid():
-            form.save_obj_perms()
-            msg = gettext("Permissions saved.")
-            messages.success(request, msg)
-            info = (
-                self.admin_site.name,
-                self.model._meta.app_label,
-                self.model._meta.model_name,
-            )
-            url = reverse(
-                '%s:%s_%s_permissions_manage_group' % info,
-                args=[obj.pk, group.id]
-            )
-            return redirect(url)
-
-        context = self.get_obj_perms_base_context(request, obj)
-        context['group_obj'] = group
-        context['group_perms'] = get_group_perms(group, obj)
-        context['form'] = form
-
-        request.current_app = self.admin_site.name
-
-        return render(request, self.get_obj_perms_manage_group_template(), context)
+        return super(RestrictedGuardedModelAdminMixin,self).obj_perms_manage_group_view(request, object_pk, group_id)
 
 
 class GuardedModelAdmin(GuardedModelAdminMixin, admin.ModelAdmin):
@@ -610,20 +487,20 @@ class GuardedModelAdmin(GuardedModelAdminMixin, admin.ModelAdmin):
 class RestrictedGuardedModelAdmin(RestrictedGuardedModelAdminMixin, admin.ModelAdmin):
     """
     Provides reinforced security to the functionality of GuardedModelAdmin.
-	Explicitly provided permissions guardian.change_userobjectpermission 
-	or guardian.change_groupobjectpermission will be required for object 
-	permissions management, global object permission (app.change_object...)
-	will no be enough.
-	This way unadvertised permission escalation is prevented.
-	
-	For viewing object permissions, guardian.view_userobjectpermission
-	or view_groupobjectpermission will be required.
-	
-	It overrides:
-	``obj_perms_manage_view`` so it checks for any of guardian.view_userobjectpermission
-	or guardian.view_groupobjectpermission permissions.
-	``obj_perms_manage_user_view`` so it checks for guardian.change_userobjectpermission.
-	``obj_perms_manage_group_view`` so it checks for guardian.change_groupobjectpermission.
+    Explicitly provided permissions guardian.change_userobjectpermission 
+    or guardian.change_groupobjectpermission will be required for object 
+    permissions management, global object permission (app.change_object...)
+    will no be enough.
+    This way unadvertised permission escalation is prevented.
+    
+    For viewing object permissions, guardian.view_userobjectpermission
+    or view_groupobjectpermission will be required.
+    
+    It overrides:
+    ``obj_perms_manage_view`` so it checks for any of guardian.view_userobjectpermission
+    or guardian.view_groupobjectpermission permissions.
+    ``obj_perms_manage_user_view`` so it checks for guardian.change_userobjectpermission.
+    ``obj_perms_manage_group_view`` so it checks for guardian.change_groupobjectpermission.
     """
 
 
