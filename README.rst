@@ -108,7 +108,26 @@ For example:
     #    pass
 
     # With object permissions support
+	# Will require myapp.change_author permission in order to view and change object permissions.
     class AuthorAdmin(GuardedModelAdmin):
+        pass
+
+    admin.site.register(Author, AuthorAdmin)
+
+Example with reinforced security:
+
+.. code:: python
+
+    from django.contrib import admin
+    from myapp.models import Author
+    from guardian.admin import GuardedModelAdmin
+
+    # With reinforced security for object permissions support
+	# Will require myapp.change_author permission in order to view and change object permissions,
+	# and:
+	#  - guardian.view_userobjectpermission or guardian.view_groupobjectpermission to see them.
+	#  - guardian.change_userobjectpermission or guardian.change_groupobjectpermission to change them.
+    class AuthorAdmin(RestrictedGuardedModelAdmin):
         pass
 
     admin.site.register(Author, AuthorAdmin)
